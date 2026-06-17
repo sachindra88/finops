@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sunrise FinOps — Azure Cost Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root{--bg:#0a0e1a;--surface:#111827;--surface2:#1a2235;--border:#1f2e47;--accent:#3b82f6;--accent2:#06b6d4;--accent3:#8b5cf6;--warn:#f59e0b;--success:#10b981;--danger:#ef4444;--text:#e2e8f0;--text-muted:#64748b;--text-dim:#94a3b8;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:56px;position:sticky;top:0;z-index:100;}
+  .logo{display:flex;align-items:center;gap:10px;}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,var(--accent),var(--accent3));border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;}
+  .logo-text{font-weight:700;font-size:15px;letter-spacing:-0.3px;}
+  .logo-text span{color:var(--accent2);}
+  #status-pill{font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(59,130,246,0.15);color:var(--accent);border:1px solid rgba(59,130,246,0.3);font-family:'JetBrains Mono',monospace;}
+  .app{display:flex;height:calc(100vh - 56px);}
+  .sidebar{width:320px;min-width:320px;background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;}
+  .sidebar-section{background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .sidebar-section-header{padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;}
+  .sidebar-section-header .toggle{margin-left:auto;opacity:0.5;transition:transform 0.2s;}
+  .sidebar-section-header.collapsed .toggle{transform:rotate(-90deg);}
+  .sidebar-section-body{padding:10px 12px;}
+  .sidebar-section-body.hidden{display:none;}
+  .filter-group{display:flex;flex-direction:column;gap:5px;margin-bottom:9px;}
+  .filter-label{font-size:11px;color:var(--text-dim);font-weight:500;}
+  select,input[type="text"],input[type="date"],input[type="password"]{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;font-size:12px;font-family:inherit;outline:none;transition:border-color 0.15s;}
+  select:focus,input:focus{border-color:var(--accent);}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;border-radius:5px;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:all 0.15s;font-family:inherit;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:#2563eb;}
+  .btn-primary:disabled{opacity:0.5;cursor:not-allowed;}
+  .btn-secondary{background:transparent;color:var(--text-dim);border:1px solid var(--border);}
+  .btn-secondary:hover{border-color:var(--accent);color:var(--accent);}
+  .btn-block{width:100%;}
+  .btn-sm{padding:4px 10px;font-size:11px;}
+  .ms-wrap{position:relative;}
+  .ms-trigger{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;font-size:12px;cursor:pointer;user-select:none;min-height:30px;}
+  .ms-trigger:hover,.ms-trigger.open{border-color:var(--accent);}
+  .ms-arrow{font-size:9px;color:var(--text-muted);margin-left:4px;transition:transform 0.2s;}
+  .ms-trigger.open .ms-arrow{transform:rotate(180deg);}
+  .ms-dropdown{position:absolute;top:100%;left:0;right:0;z-index:200;background:var(--surface2);border:1px solid var(--accent);border-radius:5px;margin-top:2px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-height:220px;overflow-y:auto;display:none;}
+  .ms-dropdown.open{display:block;}
+  .ms-search{padding:6px 8px;border-bottom:1px solid var(--border);}
+  .ms-search input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-size:11px;width:100%;font-family:inherit;outline:none;}
+  .ms-option{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;cursor:pointer;color:var(--text-dim);}
+  .ms-option:hover{background:rgba(59,130,246,0.08);color:var(--text);}
+  .ms-option input[type=checkbox]{width:13px;height:13px;flex-shrink:0;accent-color:var(--accent);}
+  .ms-actions{display:flex;gap:6px;padding:6px 8px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--surface2);}
+  .ms-actions button{flex:1;padding:4px;font-size:10px;border-radius:3px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-family:inherit;}
+  .ms-actions button:hover{color:var(--accent);border-color:var(--accent);}
+  .ms-count{font-size:10px;color:var(--accent);background:rgba(59,130,246,0.15);padding:1px 5px;border-radius:10px;margin-left:4px;}
+  .crawl-log{background:var(--bg);border:1px solid var(--border);border-radius:5px;max-height:150px;overflow-y:auto;padding:6px;margin-top:8px;font-size:10px;font-family:'JetBrains Mono',monospace;line-height:1.6;display:none;}
+  .crawl-log.visible{display:block;}
+  .log-line{color:var(--text-muted);}
+  .log-ok{color:var(--success);}
+  .log-err{color:var(--danger);}
+  .log-info{color:var(--accent);}
+  .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .loaded-files{display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;}
+  .loaded-file-item{display:flex;align-items:center;gap:6px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:11px;}
+  .loaded-file-item .lf-name{flex:1;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .loaded-file-item .lf-cost{font-family:'JetBrains Mono',monospace;color:var(--accent2);white-space:nowrap;}
+  .loaded-file-item .lf-rm{cursor:pointer;color:var(--danger);opacity:0.7;font-size:13px;}
+  .loaded-file-item .lf-rm:hover{opacity:1;}
+  .main{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px;}
+  .kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;position:relative;overflow:hidden;}
+  .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+  .kpi-card.blue::before{background:var(--accent);}
+  .kpi-card.cyan::before{background:var(--accent2);}
+  .kpi-card.purple::before{background:var(--accent3);}
+  .kpi-card.amber::before{background:var(--warn);}
+  .kpi-label{font-size:11px;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:0.06em;}
+  .kpi-value{font-size:19px;font-weight:700;margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:-0.5px;}
+  .kpi-sub{font-size:11px;color:var(--text-muted);margin-top:3px;}
+  .sub-total-banner{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:none;}
+  .sub-total-banner.visible{display:block;}
+  .sub-total-title{font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;}
+  .sub-total-grid{display:flex;flex-direction:column;gap:6px;}
+  .sub-total-row{display:flex;align-items:center;gap:10px;}
+  .sub-total-name{flex:1;font-size:12px;font-weight:500;color:var(--text-dim);}
+  .sub-total-cost{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--accent2);}
+  .sub-total-bar-wrap{width:120px;height:5px;background:var(--border);border-radius:3px;flex-shrink:0;}
+  .sub-total-bar{height:5px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;}
+  .sub-total-sum{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+  .sub-total-sum-label{font-size:12px;font-weight:600;color:var(--text-dim);}
+  .sub-total-sum-value{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;color:var(--accent);}
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;}
+  .chart-card.full{grid-column:1/-1;}
+  .chart-title{font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;}
+  .chart-wrap{position:relative;height:210px;}
+  .chart-wrap.tall{height:270px;}
+  .table-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .table-title{font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;}
+  .table-controls{display:flex;gap:8px;align-items:center;}
+  .row-count{font-size:11px;color:var(--text-muted);}
+  .group-select-wrap{display:flex;align-items:center;gap:6px;}
+  .group-select-wrap label{font-size:11px;color:var(--text-muted);white-space:nowrap;}
+  .group-select-wrap select{width:150px;padding:4px 6px;font-size:11px;}
+  .table-scroll{overflow-x:auto;max-height:430px;overflow-y:auto;}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  thead{position:sticky;top:0;}
+  th{background:var(--surface2);color:var(--text-muted);text-align:left;padding:8px 12px;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+  th:hover{color:var(--accent);}
+  th .sort-icon{margin-left:4px;opacity:0.4;}
+  td{padding:7px 12px;border-bottom:1px solid rgba(31,46,71,0.5);color:var(--text-dim);white-space:nowrap;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(59,130,246,0.04);color:var(--text);}
+  td.cost{font-family:'JetBrains Mono',monospace;font-weight:500;color:var(--text);text-align:right;}
+  td.resource-id{font-family:'JetBrains Mono',monospace;font-size:10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;}
+  .tag-badge{display:inline-block;padding:2px 5px;border-radius:3px;font-size:10px;background:rgba(139,92,246,0.15);color:#a78bfa;border:1px solid rgba(139,92,246,0.2);margin:1px;}
+  .env-badge{display:inline-block;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:500;}
+  .env-prod{background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.2);}
+  .env-dev{background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.2);}
+  .env-uat{background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.2);}
+  .env-other{background:rgba(100,116,139,0.15);color:#94a3b8;border:1px solid rgba(100,116,139,0.2);}
+  .sub-cards{display:flex;flex-direction:column;gap:8px;}
+  .sub-card{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;display:flex;align-items:center;gap:12px;}
+  .sub-name{flex:1;font-size:12px;font-weight:500;}
+  .sub-cost{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--accent2);}
+  .sub-bar-wrap{width:80px;height:4px;background:var(--border);border-radius:2px;}
+  .sub-bar{height:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;}
+  .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 20px;color:var(--text-muted);gap:10px;}
+  .empty-state .icon{font-size:36px;opacity:0.4;}
+  .empty-state p{font-size:13px;text-align:center;max-width:340px;}
+  .pagination{display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid var(--border);}
+  .pagination .page-info{font-size:11px;color:var(--text-muted);flex:1;}
+  .pagination .btn{padding:4px 10px;font-size:11px;}
+  .pagination .btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .data-source-bar{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 14px;display:flex;align-items:center;gap:10px;font-size:12px;flex-wrap:wrap;}
+  .ds-label{color:var(--text-muted);}
+  .ds-path{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent2);background:rgba(6,182,212,0.08);padding:2px 7px;border-radius:4px;}
+  .active-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+  .filter-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);color:var(--accent);padding:3px 8px;border-radius:20px;font-size:11px;}
+  .filter-chip .rm{cursor:pointer;opacity:0.7;margin-left:2px;}
+  .filter-chip .rm:hover{opacity:1;}
+  .filters-label{font-size:11px;color:var(--text-muted);}
+  ::-webkit-scrollbar{width:5px;height:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--text-muted);}
+  .tab-bar{display:flex;gap:2px;border-bottom:1px solid var(--border);}
+  .tab-btn{padding:8px 14px;font-size:12px;font-weight:500;cursor:pointer;background:none;border:none;color:var(--text-muted);border-bottom:2px solid transparent;transition:all 0.15s;font-family:inherit;margin-bottom:-1px;}
+  .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .tab-btn:hover{color:var(--text);}
+  .tab-content{padding:14px;}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+  .search-wrap{position:relative;}
+  .search-wrap input{padding-left:26px;}
+  .search-wrap .search-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;}
+  .cost-bar-cell{display:flex;align-items:center;gap:8px;}
+  .mini-bar{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));min-width:2px;}
+  .upload-zone{border:2px dashed var(--border);border-radius:7px;padding:14px;text-align:center;cursor:pointer;transition:all 0.2s;}
+  .upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:rgba(59,130,246,0.05);}
+  .upload-zone p{font-size:11px;color:var(--text-dim);margin-top:4px;}
+  .hint{font-size:10px;color:var(--text-muted);margin-top:4px;line-height:1.4;}
+  @media(max-width:900px){.kpi-strip{grid-template-columns:1fr 1fr;}.charts-grid{grid-template-columns:1fr;}.sidebar{display:none;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><div class="logo-icon">☁️</div><div class="logo-text">Sunrise <span>FinOps</span></div></div>
+  <div id="status-pill">No data loaded</div>
+</header>
+
+<div class="app">
+<aside class="sidebar">
+
+  <!-- AZURE CONNECTION -->
+  <div class="sidebar-section">
+    <div class="sidebar-section-header"><span>☁️</span> Azure Storage Connection</div>
+    <div class="sidebar-section-body">
+      <div class="filter-group">
+        <label class="filter-label">Storage Account URL</label>
+        <input type="text" id="cfg-account" value="https://sunrisefinopscostmgmt.blob.core.windows.net">
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Container</label>
+        <input type="text" id="cfg-container" value="finops">
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">SAS Token</label>
+        <input type="password" id="cfg-sas" placeholder="?sv=...&sig=...">
+        <div class="hint">Needs <b>Read</b> + <b>List</b> permissions. Generate in Portal → Storage account → Shared access signature, or per-container SAS.</div>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Cost folder suffix to match</label>
+        <input type="text" id="cfg-suffix" value="actual-cost">
+        <div class="hint">Auto-crawl loads the <b>latest period</b> in any folder whose name contains this text.</div>
+      </div>
+      <button class="btn btn-primary btn-block" id="crawl-btn" onclick="autoCrawl()">⚡ Auto-Crawl All Subscriptions</button>
+      <div class="crawl-log" id="crawl-log"></div>
+    </div>
+  </div>
+
+  <!-- MANUAL UPLOAD FALLBACK -->
+  <div class="sidebar-section">
+    <div class="sidebar-section-header collapsed" onclick="toggleSection(this)"><span>📁</span> Manual Upload<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body hidden">
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+        <div style="font-size:20px">📊</div>
+        <strong style="font-size:12px">Click or Drag CSVs</strong>
+        <p>Multiple files supported</p>
+      </div>
+      <input type="file" id="file-input" accept=".csv" multiple style="display:none" onchange="handleFileUpload(event)">
+    </div>
+  </div>
+
+  <!-- LOADED FILES -->
+  <div class="sidebar-section" id="loaded-files-section" style="display:none">
+    <div class="sidebar-section-header"><span>✅</span> Loaded Files</div>
+    <div class="sidebar-section-body">
+      <div class="loaded-files" id="loaded-files-list"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="clearAllData()">Clear All</button>
+        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="clearFilters()">Reset Filters</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>📅</span> Date Range<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body">
+      <div class="filter-group"><label class="filter-label">From</label><input type="date" id="date-from" onchange="applyFilters()"></div>
+      <div class="filter-group"><label class="filter-label">To</label><input type="date" id="date-to" onchange="applyFilters()"></div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>🔵</span> Subscriptions<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body"><div class="ms-wrap" id="ms-sub"><div class="ms-trigger" onclick="toggleMs('ms-sub')"><span id="ms-sub-label">All subscriptions</span><span class="ms-arrow">▼</span></div><div class="ms-dropdown" id="ms-sub-dropdown"><div class="ms-search"><input type="text" placeholder="Search…" oninput="filterMsOptions('ms-sub',this.value)"></div><div id="ms-sub-options"></div><div class="ms-actions"><button onclick="msSelectAll('ms-sub')">All</button><button onclick="msClearAll('ms-sub')">None</button></div></div></div></div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>📦</span> Resource Groups<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body"><div class="ms-wrap" id="ms-rg"><div class="ms-trigger" onclick="toggleMs('ms-rg')"><span id="ms-rg-label">All resource groups</span><span class="ms-arrow">▼</span></div><div class="ms-dropdown" id="ms-rg-dropdown"><div class="ms-search"><input type="text" placeholder="Search…" oninput="filterMsOptions('ms-rg',this.value)"></div><div id="ms-rg-options"></div><div class="ms-actions"><button onclick="msSelectAll('ms-rg')">All</button><button onclick="msClearAll('ms-rg')">None</button></div></div></div></div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>⚙️</span> Service Family<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body"><div class="ms-wrap" id="ms-svc"><div class="ms-trigger" onclick="toggleMs('ms-svc')"><span id="ms-svc-label">All services</span><span class="ms-arrow">▼</span></div><div class="ms-dropdown" id="ms-svc-dropdown"><div id="ms-svc-options"></div><div class="ms-actions"><button onclick="msSelectAll('ms-svc')">All</button><button onclick="msClearAll('ms-svc')">None</button></div></div></div></div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>🌍</span> Location<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body"><div class="ms-wrap" id="ms-loc"><div class="ms-trigger" onclick="toggleMs('ms-loc')"><span id="ms-loc-label">All locations</span><span class="ms-arrow">▼</span></div><div class="ms-dropdown" id="ms-loc-dropdown"><div id="ms-loc-options"></div><div class="ms-actions"><button onclick="msSelectAll('ms-loc')">All</button><button onclick="msClearAll('ms-loc')">None</button></div></div></div></div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>🏢</span> Department (Tag)<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body"><div class="ms-wrap" id="ms-dept"><div class="ms-trigger" onclick="toggleMs('ms-dept')"><span id="ms-dept-label">All departments</span><span class="ms-arrow">▼</span></div><div class="ms-dropdown" id="ms-dept-dropdown"><div class="ms-search"><input type="text" placeholder="Search…" oninput="filterMsOptions('ms-dept',this.value)"></div><div id="ms-dept-options"></div><div class="ms-actions"><button onclick="msSelectAll('ms-dept')">All</button><button onclick="msClearAll('ms-dept')">None</button></div></div></div></div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>🌿</span> Environment (Tag)<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body"><div class="ms-wrap" id="ms-env"><div class="ms-trigger" onclick="toggleMs('ms-env')"><span id="ms-env-label">All environments</span><span class="ms-arrow">▼</span></div><div class="ms-dropdown" id="ms-env-dropdown"><div id="ms-env-options"></div><div class="ms-actions"><button onclick="msSelectAll('ms-env')">All</button><button onclick="msClearAll('ms-env')">None</button></div></div></div></div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>📱</span> Application (Tag)<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body"><div class="ms-wrap" id="ms-app"><div class="ms-trigger" onclick="toggleMs('ms-app')"><span id="ms-app-label">All applications</span><span class="ms-arrow">▼</span></div><div class="ms-dropdown" id="ms-app-dropdown"><div class="ms-search"><input type="text" placeholder="Search…" oninput="filterMsOptions('ms-app',this.value)"></div><div id="ms-app-options"></div><div class="ms-actions"><button onclick="msSelectAll('ms-app')">All</button><button onclick="msClearAll('ms-app')">None</button></div></div></div></div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header" onclick="toggleSection(this)"><span>🔎</span> Search & Meter<span class="toggle">▾</span></div>
+    <div class="sidebar-section-body">
+      <div class="filter-group"><label class="filter-label">Resource Name / ID</label><input type="text" id="resource-search" placeholder="e.g. SUN-VM-001…" oninput="applyFilters()"></div>
+      <div class="filter-group"><label class="filter-label">Meter Category</label>
+        <div class="ms-wrap" id="ms-meter"><div class="ms-trigger" onclick="toggleMs('ms-meter')"><span id="ms-meter-label">All categories</span><span class="ms-arrow">▼</span></div><div class="ms-dropdown" id="ms-meter-dropdown"><div class="ms-search"><input type="text" placeholder="Search…" oninput="filterMsOptions('ms-meter',this.value)"></div><div id="ms-meter-options"></div><div class="ms-actions"><button onclick="msSelectAll('ms-meter')">All</button><button onclick="msClearAll('ms-meter')">None</button></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary btn-block" onclick="applyFilters()">Apply Filters</button>
+</aside>
+
+<main class="main">
+  <div class="data-source-bar" id="source-bar">
+    <span class="ds-label">Data source:</span>
+    <span class="ds-path" id="source-path">No data — click "Auto-Crawl All Subscriptions"</span>
+    <span id="row-total" style="margin-left:auto;font-size:11px;color:var(--text-muted)"></span>
+  </div>
+
+  <div id="active-filters-bar" style="display:none"><div class="active-filters" id="active-filters-list"></div></div>
+
+  <div class="kpi-strip">
+    <div class="kpi-card blue"><div class="kpi-label">Total Cost (Filtered)</div><div class="kpi-value" id="kpi-total">—</div><div class="kpi-sub" id="kpi-currency">CAD</div></div>
+    <div class="kpi-card cyan"><div class="kpi-label">Unique Resources</div><div class="kpi-value" id="kpi-resources">—</div><div class="kpi-sub">resources</div></div>
+    <div class="kpi-card purple"><div class="kpi-label">Resource Groups</div><div class="kpi-value" id="kpi-rgs">—</div><div class="kpi-sub">groups</div></div>
+    <div class="kpi-card amber"><div class="kpi-label">Charge Records</div><div class="kpi-value" id="kpi-rows">—</div><div class="kpi-sub" id="kpi-rows-sub">rows</div></div>
+  </div>
+
+  <div class="sub-total-banner" id="sub-total-banner">
+    <div class="sub-total-title">📊 Cost by Subscription (current selection)</div>
+    <div class="sub-total-grid" id="sub-total-grid"></div>
+    <div class="sub-total-sum"><span class="sub-total-sum-label">Combined Total</span><span class="sub-total-sum-value" id="sub-total-sum-value">—</span></div>
+  </div>
+
+  <div class="table-card">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('overview',this)">Overview</button>
+      <button class="tab-btn" onclick="switchTab('subscriptions',this)">Subscriptions</button>
+      <button class="tab-btn" onclick="switchTab('resources',this)">Resources</button>
+      <button class="tab-btn" onclick="switchTab('details',this)">Detail Rows</button>
+    </div>
+    <div class="tab-content">
+      <div class="tab-panel active" id="tab-overview">
+        <div class="charts-grid">
+          <div class="chart-card"><div class="chart-title">Cost by Service Family</div><div class="chart-wrap"><canvas id="chart-service"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Cost by Location</div><div class="chart-wrap"><canvas id="chart-location"></canvas></div></div>
+          <div class="chart-card full"><div class="chart-title">Daily Cost Trend</div><div class="chart-wrap tall"><canvas id="chart-daily"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Top 10 Resource Groups by Cost</div><div class="chart-wrap tall"><canvas id="chart-rg"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Top 10 Meter Categories</div><div class="chart-wrap tall"><canvas id="chart-meter"></canvas></div></div>
+        </div>
+      </div>
+      <div class="tab-panel" id="tab-subscriptions"><div id="sub-breakdown" class="sub-cards"><div class="empty-state"><div class="icon">📂</div><p>Load data to see subscription breakdown</p></div></div></div>
+      <div class="tab-panel" id="tab-resources">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div class="table-title">Resource Cost Summary</div>
+          <div class="table-controls"><div class="group-select-wrap"><label>Group by:</label><select id="group-by" onchange="renderResourceTable()"><option value="resource">Resource</option><option value="rg">Resource Group</option><option value="service">Service Family</option><option value="meter">Meter Category</option><option value="location">Location</option><option value="dept">Department</option><option value="subscriptionName">Subscription</option></select></div><span class="row-count" id="resource-row-count"></span></div>
+        </div>
+        <div class="table-scroll"><table><thead><tr><th onclick="sortResourceTable('name')">Name <span class="sort-icon">↕</span></th><th onclick="sortResourceTable('count')">Records <span class="sort-icon">↕</span></th><th onclick="sortResourceTable('cost')" style="text-align:right">Cost <span class="sort-icon">↕</span></th><th>Share</th></tr></thead><tbody id="resource-tbody"><tr><td colspan="4"><div class="empty-state"><div class="icon">📂</div><p>No data loaded</p></div></td></tr></tbody></table></div>
+      </div>
+      <div class="tab-panel" id="tab-details">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div class="table-title">Charge Detail</div>
+          <div class="table-controls"><div class="search-wrap"><span class="search-icon">🔍</span><input type="text" id="table-search" placeholder="Search rows…" oninput="filterDetailTable()" style="width:180px"></div><span class="row-count" id="detail-row-count"></span></div>
+        </div>
+        <div class="table-scroll"><table><thead><tr><th onclick="sortDetailTable('date')">Date <span class="sort-icon">↕</span></th><th onclick="sortDetailTable('subscriptionName')">Subscription <span class="sort-icon">↕</span></th><th onclick="sortDetailTable('resourceGroupName')">Resource Group <span class="sort-icon">↕</span></th><th onclick="sortDetailTable('serviceFamily')">Service <span class="sort-icon">↕</span></th><th onclick="sortDetailTable('meterCategory')">Meter <span class="sort-icon">↕</span></th><th>Resource</th><th>Tags</th><th onclick="sortDetailTable('costInBillingCurrency')" style="text-align:right">Cost <span class="sort-icon">↕</span></th></tr></thead><tbody id="detail-tbody"><tr><td colspan="8"><div class="empty-state"><div class="icon">📂</div><p>Load data to see rows</p></div></td></tr></tbody></table></div>
+        <div class="pagination"><span class="page-info" id="page-info"></span><button class="btn btn-secondary" id="prev-btn" onclick="changePage(-1)" disabled>← Prev</button><button class="btn btn-secondary" id="next-btn" onclick="changePage(1)" disabled>Next →</button></div>
+      </div>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+let loadedFiles=[],allRows=[],filteredRows=[],detailPage=1;
+const PAGE_SIZE=50;
+let detailSearch='',resourceSortCol='cost',resourceSortDir='desc',detailSortCol='costInBillingCurrency',detailSortDir='desc';
+let charts={};
+const CHART_COLORS=['#3b82f6','#06b6d4','#8b5cf6','#f59e0b','#10b981','#ef4444','#f97316','#ec4899','#84cc16','#14b8a6'];
+
+// ── FORMAT: always full dollars + cents ──
+function fmt(n){if(n===null||n===undefined||isNaN(n))return '$0.00';return '$'+Number(n).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtShort(n){if(n>=1000000)return '$'+(n/1000000).toFixed(2)+'M';if(n>=1000)return '$'+(n/1000).toFixed(2)+'K';return '$'+Number(n).toFixed(2);}
+
+function toggleSection(h){h.classList.toggle('collapsed');h.nextElementSibling.classList.toggle('hidden');}
+function switchTab(name,btn){document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));btn.classList.add('active');document.getElementById('tab-'+name).classList.add('active');if(name==='overview')renderCharts();if(name==='resources')renderResourceTable();if(name==='details')renderDetailTable();if(name==='subscriptions')renderSubBreakdown();}
+function getResourceName(row){if(!row.ResourceId)return row.resourceGroupName||'—';const p=row.ResourceId.split('/');return p[p.length-1]||row.ResourceId;}
+function parseTagsRobust(t){if(!t)return{};try{return JSON.parse(t);}catch{return{};}}
+function getTagVal(row,...keys){const tags=parseTagsRobust(row.tags);const norm={};Object.keys(tags).forEach(k=>norm[k.toLowerCase()]=tags[k]);for(const k of keys){const v=norm[k.toLowerCase()];if(v)return String(v);}return '';}
+
+// ═══ AZURE BLOB — XML LISTING + AUTO-CRAWL ═══
+function cfg(){return{account:document.getElementById('cfg-account').value.replace(/\/$/,''),container:document.getElementById('cfg-container').value.trim(),sas:document.getElementById('cfg-sas').value.trim().replace(/^\?/,''),suffix:document.getElementById('cfg-suffix').value.trim().toLowerCase()};}
+function listUrl(prefix){const c=cfg();let u=`${c.account}/${c.container}?restype=container&comp=list&delimiter=%2F&prefix=${encodeURIComponent(prefix)}`;if(c.sas)u+='&'+c.sas;return u;}
+function fileUrl(blobName){const c=cfg();let u=`${c.account}/${c.container}/${blobName.split('/').map(encodeURIComponent).join('/')}`;if(c.sas)u+='?'+c.sas;return u;}
+
+async function listPrefix(prefix){
+  const resp=await fetch(listUrl(prefix));
+  if(!resp.ok)throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+  const xml=await resp.text();
+  const doc=new DOMParser().parseFromString(xml,'text/xml');
+  const folders=[...doc.querySelectorAll('BlobPrefix Name')].map(n=>n.textContent);
+  const blobs=[...doc.querySelectorAll('Blobs Blob')].map(b=>({name:b.querySelector('Name').textContent,size:parseInt(b.querySelector('Content-Length')?.textContent||0)}));
+  return {folders,blobs};
+}
+
+function log(msg,cls='line'){const el=document.getElementById('crawl-log');el.classList.add('visible');const d=document.createElement('div');d.className='log-'+cls;d.innerHTML=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+
+async function autoCrawl(){
+  const c=cfg();
+  if(!c.sas){log('⚠️ No SAS token entered. Add one with Read+List permissions.','err');return;}
+  const btn=document.getElementById('crawl-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Crawling…';
+  document.getElementById('crawl-log').innerHTML='';
+  document.getElementById('crawl-log').classList.add('visible');
+  log('🔍 Listing subscription folders…','info');
+
+  try{
+    // Level 1: subscription folders (dev/, prod/, management/, ...)
+    const root=await listPrefix('');
+    if(!root.folders.length){log('No folders found at container root. Check container name & SAS.','err');resetBtn();return;}
+    log(`Found ${root.folders.length} top-level folders.`,'ok');
+
+    let csvTargets=[]; // {sub, period, blobName}
+
+    for(const subFolder of root.folders){
+      const subName=subFolder.replace(/\/$/,'').split('/').pop();
+      // Level 2: cost-type folders under subscription (e.g. management-actual-cost/)
+      let lvl2;
+      try{ lvl2=await listPrefix(subFolder); }catch(e){ log(`✗ ${subName}: ${e.message}`,'err'); continue; }
+      const costFolders=lvl2.folders.filter(f=>f.toLowerCase().includes(c.suffix));
+      if(!costFolders.length){ log(`• ${subName}: no "${c.suffix}" folder`,'line'); continue; }
+
+      for(const costFolder of costFolders){
+        // Level 3: period folders (20250501-20250531/)
+        const lvl3=await listPrefix(costFolder);
+        if(!lvl3.folders.length){ continue; }
+        // pick latest period by name (YYYYMMDD-YYYYMMDD sorts lexicographically)
+        const latestPeriod=lvl3.folders.map(f=>f.replace(/\/$/,'')).sort().pop()+'/';
+        const periodName=latestPeriod.replace(/\/$/,'').split('/').pop();
+        // Level 4: GUID folder(s)
+        const lvl4=await listPrefix(latestPeriod);
+        for(const guidFolder of lvl4.folders){
+          // Level 5: CSV files
+          const lvl5=await listPrefix(guidFolder);
+          const csvs=lvl5.blobs.filter(b=>b.name.toLowerCase().endsWith('.csv'));
+          csvs.forEach(csv=>csvTargets.push({sub:subName,period:periodName,blobName:csv.name,size:csv.size}));
+        }
+        // Some exports drop CSVs directly under the period folder (no GUID)
+        const directCsvs=lvl3.blobs.filter(b=>b.name.toLowerCase().endsWith('.csv'));
+        directCsvs.forEach(csv=>csvTargets.push({sub:subName,period:periodName,blobName:csv.name,size:csv.size}));
+      }
+      log(`✓ ${subName}: latest period queued`,'ok');
+    }
+
+    if(!csvTargets.length){log('No CSV files found in any subscription.','err');resetBtn();return;}
+    log(`📥 Downloading ${csvTargets.length} CSV file(s)…`,'info');
+
+    let done=0;
+    for(const t of csvTargets){
+      try{
+        const resp=await fetch(fileUrl(t.blobName));
+        if(!resp.ok)throw new Error('HTTP '+resp.status);
+        const text=await resp.text();
+        const fname=`${t.sub} / ${t.period}`;
+        await loadCsvText(text,fname,t.blobName);
+        done++;
+        log(`  ✓ ${t.sub} (${(t.size/1024).toFixed(0)} KB)`,'ok');
+      }catch(e){ log(`  ✗ ${t.sub}: ${e.message}`,'err'); }
+    }
+    log(`✅ Done — ${done}/${csvTargets.length} files loaded.`,'info');
+  }catch(e){
+    log('Crawl failed: '+e.message,'err');
+    log('If this is a CORS error, enable CORS on the storage account (see README).','err');
+  }
+  resetBtn();
+}
+function resetBtn(){const btn=document.getElementById('crawl-btn');btn.disabled=false;btn.innerHTML='⚡ Auto-Crawl All Subscriptions';}
+
+function loadCsvText(text,displayName,sourcePath){
+  return new Promise(resolve=>{
+    Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:true,complete(results){
+      const rows=results.data.filter(r=>r.date||r.Date);
+      loadedFiles=loadedFiles.filter(f=>f.name!==displayName);
+      const cost=rows.reduce((s,r)=>s+(r.costInBillingCurrency||0),0);
+      loadedFiles.push({name:displayName,path:sourcePath,rows,cost});
+      rebuildAllRows();resolve();
+    }});
+  });
+}
+
+// ── MANUAL UPLOAD ──
+function handleFileUpload(e){[...e.target.files].forEach(f=>{const r=new FileReader();r.onload=()=>loadCsvText(r.result,f.name,f.name);r.readAsText(f);});e.target.value='';}
+const uz=document.getElementById('upload-zone');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag');});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag'));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag');[...e.dataTransfer.files].filter(f=>f.name.endsWith('.csv')).forEach(f=>{const r=new FileReader();r.onload=()=>loadCsvText(r.result,f.name,f.name);r.readAsText(f);});});
+
+function rebuildAllRows(){
+  allRows=loadedFiles.flatMap(f=>f.rows);filteredRows=[...allRows];
+  document.getElementById('status-pill').textContent=allRows.length.toLocaleString()+' rows loaded';
+  document.getElementById('row-total').textContent=allRows.length.toLocaleString()+' total rows';
+  document.getElementById('source-path').textContent=loadedFiles.length+' file(s): '+loadedFiles.map(f=>f.name.split(' / ')[0]).join(', ');
+  document.getElementById('loaded-files-section').style.display='';
+  renderLoadedFiles();populateFilters();applyFilters();
+}
+function renderLoadedFiles(){document.getElementById('loaded-files-list').innerHTML=loadedFiles.map((f,i)=>`<div class="loaded-file-item"><span class="lf-name" title="${f.path}">📊 ${f.name}</span><span class="lf-cost">${fmt(f.cost)}</span><span class="lf-rm" onclick="removeFile(${i})">×</span></div>`).join('');}
+function removeFile(i){loadedFiles.splice(i,1);if(!loadedFiles.length){clearAllData();return;}rebuildAllRows();}
+function clearAllData(){loadedFiles=[];allRows=[];filteredRows=[];document.getElementById('status-pill').textContent='No data loaded';document.getElementById('row-total').textContent='';document.getElementById('source-path').textContent='No data loaded';document.getElementById('loaded-files-section').style.display='none';document.getElementById('loaded-files-list').innerHTML='';['kpi-total','kpi-resources','kpi-rgs','kpi-rows'].forEach(id=>document.getElementById(id).textContent='—');document.getElementById('sub-total-banner').classList.remove('visible');renderCharts();renderResourceTable();renderDetailTable();renderSubBreakdown();}
+
+// ═══ MULTI-SELECT ═══
+const msState={};
+function buildMs(id,values,singular){if(!msState[id])msState[id]={values:new Set(),allValues:[]};msState[id].allValues=values;msState[id].singular=singular;const oc=document.getElementById(id+'-options');oc.innerHTML='';values.forEach(v=>{const div=document.createElement('div');div.className='ms-option';div.dataset.val=v;const cb=document.createElement('input');cb.type='checkbox';cb.value=v;cb.checked=msState[id].values.size===0||msState[id].values.has(v);cb.onchange=()=>msToggleValue(id,v,cb.checked);div.appendChild(cb);div.appendChild(document.createTextNode(' '+v));div.onclick=e=>{if(e.target!==cb){cb.checked=!cb.checked;msToggleValue(id,v,cb.checked);}};oc.appendChild(div);});updateMsLabel(id);}
+function msToggleValue(id,v,checked){if(checked)msState[id].values.add(v);else msState[id].values.delete(v);updateMsLabel(id);applyFilters();}
+function updateMsLabel(id){const s=msState[id];if(!s)return;const label=document.getElementById(id+'-label');const sel=s.values;if(sel.size===0||sel.size===s.allValues.length){label.innerHTML='All '+(s.singular||'');document.querySelectorAll(`#${id}-options input[type=checkbox]`).forEach(cb=>cb.checked=true);s.values=new Set();}else{label.innerHTML=`${sel.size} selected <span class="ms-count">${sel.size}</span>`;}}
+function getMsSelected(id){const s=msState[id];if(!s||s.values.size===0)return[];return[...s.values];}
+function toggleMs(id){const dd=document.getElementById(id+'-dropdown');const tr=document.querySelector(`#${id} .ms-trigger`);const open=dd.classList.contains('open');document.querySelectorAll('.ms-dropdown.open').forEach(d=>d.classList.remove('open'));document.querySelectorAll('.ms-trigger.open').forEach(t=>t.classList.remove('open'));if(!open){dd.classList.add('open');tr.classList.add('open');}}
+function filterMsOptions(id,s){const q=s.toLowerCase();document.querySelectorAll(`#${id}-options .ms-option`).forEach(o=>o.style.display=o.dataset.val.toLowerCase().includes(q)?'':'none');}
+function msSelectAll(id){msState[id].values=new Set();document.querySelectorAll(`#${id}-options input[type=checkbox]`).forEach(cb=>cb.checked=true);updateMsLabel(id);applyFilters();}
+function msClearAll(id){msState[id].values=new Set(msState[id].allValues);document.querySelectorAll(`#${id}-options input[type=checkbox]`).forEach(cb=>cb.checked=false);updateMsLabel(id);applyFilters();}
+document.addEventListener('click',e=>{if(!e.target.closest('.ms-wrap')){document.querySelectorAll('.ms-dropdown.open').forEach(d=>d.classList.remove('open'));document.querySelectorAll('.ms-trigger.open').forEach(t=>t.classList.remove('open'));}});
+
+// ═══ FILTERS ═══
+function populateFilters(){
+  const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y)));
+  buildMs('ms-sub',uniq(allRows.map(r=>r.subscriptionName)),'subscriptions');
+  buildMs('ms-rg',uniq(allRows.map(r=>r.resourceGroupName)),'resource groups');
+  buildMs('ms-svc',uniq(allRows.map(r=>r.serviceFamily)),'services');
+  buildMs('ms-loc',uniq(allRows.map(r=>r.location)),'locations');
+  buildMs('ms-meter',uniq(allRows.map(r=>r.meterCategory)),'categories');
+  const depts=new Set(),envs=new Set(),apps=new Set();
+  allRows.forEach(r=>{const d=getTagVal(r,'department','Department');if(d)depts.add(d);const e=getTagVal(r,'environment','Environment','Environtment');if(e)envs.add(e);const a=getTagVal(r,'application','Application');if(a)apps.add(a);});
+  buildMs('ms-dept',[...depts].sort(),'departments');
+  buildMs('ms-env',[...envs].sort(),'environments');
+  buildMs('ms-app',[...apps].sort(),'applications');
+  const dates=allRows.map(r=>parseDate(r.date)).filter(Boolean).sort((a,b)=>a-b);
+  if(dates.length){document.getElementById('date-from').value=toInputDate(dates[0]);document.getElementById('date-to').value=toInputDate(dates[dates.length-1]);}
+}
+function parseDate(d){if(!d)return null;const s=String(d);const p=s.split('/');if(p.length===3)return new Date(p[2],p[0]-1,p[1]);return new Date(s);}
+function toInputDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+function applyFilters(){
+  if(!allRows.length)return;
+  const selSub=getMsSelected('ms-sub'),selRg=getMsSelected('ms-rg'),selSvc=getMsSelected('ms-svc'),selLoc=getMsSelected('ms-loc'),selMeter=getMsSelected('ms-meter'),selDept=getMsSelected('ms-dept'),selEnv=getMsSelected('ms-env'),selApp=getMsSelected('ms-app');
+  const resSearch=(document.getElementById('resource-search').value||'').toLowerCase();
+  const dateFrom=document.getElementById('date-from').value?new Date(document.getElementById('date-from').value):null;
+  const dateTo=document.getElementById('date-to').value?new Date(document.getElementById('date-to').value):null;
+  filteredRows=allRows.filter(r=>{
+    if(selSub.length&&!selSub.includes(r.subscriptionName))return false;
+    if(selRg.length&&!selRg.includes(r.resourceGroupName))return false;
+    if(selSvc.length&&!selSvc.includes(r.serviceFamily))return false;
+    if(selLoc.length&&!selLoc.includes(r.location))return false;
+    if(selMeter.length&&!selMeter.includes(r.meterCategory))return false;
+    if(selDept.length){const v=getTagVal(r,'department','Department').toLowerCase();if(!selDept.some(d=>d.toLowerCase()===v))return false;}
+    if(selEnv.length){const v=getTagVal(r,'environment','Environment','Environtment').toLowerCase();if(!selEnv.some(e=>e.toLowerCase()===v))return false;}
+    if(selApp.length){const v=getTagVal(r,'application','Application').toLowerCase();if(!selApp.some(a=>a.toLowerCase()===v))return false;}
+    if(dateFrom||dateTo){const d=parseDate(r.date);if(dateFrom&&d<dateFrom)return false;if(dateTo&&d>dateTo)return false;}
+    if(resSearch){const rid=(r.ResourceId||'').toLowerCase(),rn=getResourceName(r).toLowerCase();if(!rid.includes(resSearch)&&!rn.includes(resSearch))return false;}
+    return true;
+  });
+  detailPage=1;
+  updateKPIs();renderSubTotalBanner();renderActiveFilters();renderCharts();renderResourceTable();renderDetailTable();renderSubBreakdown();
+}
+function clearFilters(){['ms-sub','ms-rg','ms-svc','ms-loc','ms-meter','ms-dept','ms-env','ms-app'].forEach(id=>{if(msState[id])msState[id].values=new Set();updateMsLabel(id);document.querySelectorAll(`#${id}-options input[type=checkbox]`).forEach(cb=>cb.checked=true);});document.getElementById('resource-search').value='';applyFilters();}
+
+function updateKPIs(){const total=filteredRows.reduce((s,r)=>s+(r.costInBillingCurrency||0),0);document.getElementById('kpi-total').textContent=fmt(total);document.getElementById('kpi-currency').textContent=filteredRows[0]?.billingCurrency||'CAD';document.getElementById('kpi-resources').textContent=new Set(filteredRows.map(r=>r.ResourceId).filter(Boolean)).size.toLocaleString();document.getElementById('kpi-rgs').textContent=new Set(filteredRows.map(r=>r.resourceGroupName).filter(Boolean)).size.toLocaleString();document.getElementById('kpi-rows').textContent=filteredRows.length.toLocaleString();document.getElementById('kpi-rows-sub').textContent=`of ${allRows.length.toLocaleString()} total`;}
+
+function renderSubTotalBanner(){const banner=document.getElementById('sub-total-banner');const map={};filteredRows.forEach(r=>{const k=r.subscriptionName||r.SubscriptionId||'Unknown';map[k]=(map[k]||0)+(r.costInBillingCurrency||0);});const entries=Object.entries(map).sort((a,b)=>b[1]-a[1]);if(!entries.length){banner.classList.remove('visible');return;}banner.classList.add('visible');const maxCost=Math.max(...entries.map(e=>e[1]),1);const total=entries.reduce((s,e)=>s+e[1],0);const cur=filteredRows[0]?.billingCurrency||'CAD';document.getElementById('sub-total-grid').innerHTML=entries.map(([n,c])=>`<div class="sub-total-row"><span class="sub-total-name">${n}</span><div class="sub-total-bar-wrap"><div class="sub-total-bar" style="width:${Math.round(c/maxCost*100)}%"></div></div><span class="sub-total-cost">${fmt(c)}</span></div>`).join('');document.getElementById('sub-total-sum-value').textContent=fmt(total)+' '+cur;}
+
+function renderActiveFilters(){const chips=[];const add=(l,f)=>chips.push({label:l,clear:f});const m=(id,p)=>{const s=getMsSelected(id);if(s.length)add(p+': '+(s.length>3?s.length+' selected':s.join(', ')),()=>msSelectAll(id));};m('ms-sub','Subs');m('ms-rg','RG');m('ms-svc','Svc');m('ms-loc','Loc');m('ms-dept','Dept');m('ms-env','Env');m('ms-app','App');m('ms-meter','Meter');const res=document.getElementById('resource-search').value;if(res)add('Resource: '+res,()=>{document.getElementById('resource-search').value='';applyFilters();});const bar=document.getElementById('active-filters-bar'),list=document.getElementById('active-filters-list');if(!chips.length){bar.style.display='none';return;}bar.style.display='block';list.innerHTML='<span class="filters-label">Active filters:</span>';window._cc=chips.map(c=>c.clear);chips.forEach((c,i)=>{const d=document.createElement('div');d.className='filter-chip';d.innerHTML=c.label+` <span class="rm" onclick="window._cc[${i}]()">×</span>`;list.appendChild(d);});}
+
+// ═══ CHARTS ═══
+const CD={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94a3b8',font:{size:11}}}}};
+function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+function groupBy(rows,key){const m={};rows.forEach(r=>{const k=r[key]||'Unknown';m[k]=(m[k]||0)+(r.costInBillingCurrency||0);});return Object.entries(m).sort((a,b)=>b[1]-a[1]);}
+function renderCharts(){
+  if(!filteredRows.length)return;
+  dc('service');const sd=groupBy(filteredRows,'serviceFamily');charts.service=new Chart(document.getElementById('chart-service'),{type:'doughnut',data:{labels:sd.map(d=>d[0]),datasets:[{data:sd.map(d=>d[1]),backgroundColor:CHART_COLORS,borderWidth:0}]},options:{...CD,plugins:{...CD.plugins,tooltip:{callbacks:{label:c=>' '+c.label+': '+fmt(c.raw)}}}}});
+  dc('location');const ld=groupBy(filteredRows,'location');charts.location=new Chart(document.getElementById('chart-location'),{type:'bar',data:{labels:ld.map(d=>d[0]),datasets:[{data:ld.map(d=>d[1]),backgroundColor:CHART_COLORS[1],borderRadius:4}]},options:{...CD,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmt(c.raw)}}},scales:{x:{ticks:{color:'#64748b',callback:v=>fmtShort(v)},grid:{color:'#1f2e47'}},y:{ticks:{color:'#94a3b8',font:{size:11}},grid:{display:false}}}}});
+  dc('daily');const bd={};filteredRows.forEach(r=>{const d=r.date||'?';bd[d]=(bd[d]||0)+(r.costInBillingCurrency||0);});const ds=Object.entries(bd).sort((a,b)=>parseDate(a[0])-parseDate(b[0]));charts.daily=new Chart(document.getElementById('chart-daily'),{type:'line',data:{labels:ds.map(d=>d[0]),datasets:[{data:ds.map(d=>d[1]),borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.08)',fill:true,tension:0.3,pointRadius:2,pointHoverRadius:5}]},options:{...CD,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmt(c.raw)}}},scales:{x:{ticks:{color:'#64748b',maxTicksLimit:14},grid:{color:'#1f2e47'}},y:{ticks:{color:'#64748b',callback:v=>fmtShort(v)},grid:{color:'#1f2e47'}}}}});
+  dc('rg');const rg=groupBy(filteredRows,'resourceGroupName').slice(0,10);charts.rg=new Chart(document.getElementById('chart-rg'),{type:'bar',data:{labels:rg.map(d=>d[0].replace(/sun-rg-p-cc-/i,'')),datasets:[{data:rg.map(d=>d[1]),backgroundColor:CHART_COLORS[2],borderRadius:4}]},options:{...CD,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmt(c.raw)}}},scales:{x:{ticks:{color:'#64748b',callback:v=>fmtShort(v)},grid:{color:'#1f2e47'}},y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}}}});
+  dc('meter');const mt=groupBy(filteredRows,'meterCategory').slice(0,10);charts.meter=new Chart(document.getElementById('chart-meter'),{type:'bar',data:{labels:mt.map(d=>d[0]),datasets:[{data:mt.map(d=>d[1]),backgroundColor:CHART_COLORS.map((_,i)=>CHART_COLORS[(i+3)%CHART_COLORS.length]),borderRadius:4}]},options:{...CD,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmt(c.raw)}}},scales:{x:{ticks:{color:'#64748b',callback:v=>fmtShort(v)},grid:{color:'#1f2e47'}},y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}}}});
+}
+
+function renderSubBreakdown(){const el=document.getElementById('sub-breakdown');if(!filteredRows.length){el.innerHTML='<div class="empty-state"><div class="icon">📂</div><p>No data loaded</p></div>';return;}const map={};filteredRows.forEach(r=>{const k=r.subscriptionName||r.SubscriptionId||'Unknown';if(!map[k])map[k]={cost:0,rows:0,rgs:new Set(),res:new Set()};map[k].cost+=(r.costInBillingCurrency||0);map[k].rows++;if(r.resourceGroupName)map[k].rgs.add(r.resourceGroupName);if(r.ResourceId)map[k].res.add(r.ResourceId);});const entries=Object.entries(map).sort((a,b)=>b[1].cost-a[1].cost);const maxCost=entries[0]?.[1].cost||1;const grand=entries.reduce((s,e)=>s+e[1].cost,0);el.innerHTML=entries.map(([n,d])=>`<div class="sub-card"><div style="flex:1"><div class="sub-name">${n}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${d.rgs.size} RGs · ${d.res.size} resources · ${d.rows.toLocaleString()} rows</div></div><div class="sub-bar-wrap"><div class="sub-bar" style="width:${Math.round(d.cost/maxCost*100)}%"></div></div><div class="sub-cost">${fmt(d.cost)}</div></div>`).join('')+`<div style="padding:10px 12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;margin-top:4px"><span style="font-size:12px;font-weight:600;color:var(--text-dim)">Grand Total</span><span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--accent)">${fmt(grand)}</span></div>`;}
+
+function renderResourceTable(){const gv=document.getElementById('group-by').value;const g={};filteredRows.forEach(r=>{let k='';if(gv==='resource')k=getResourceName(r)||'—';else if(gv==='dept')k=getTagVal(r,'department','Department')||'(untagged)';else k=r[gv]||'—';if(!g[k])g[k]={name:k,cost:0,count:0};g[k].cost+=(r.costInBillingCurrency||0);g[k].count++;});let e=Object.values(g);e.sort((a,b)=>{const v=resourceSortDir==='asc'?1:-1;if(resourceSortCol==='name')return v*a.name.localeCompare(b.name);if(resourceSortCol==='count')return v*(a.count-b.count);return v*(a.cost-b.cost);});const mx=Math.max(...e.map(x=>x.cost),1);document.getElementById('resource-row-count').textContent=e.length.toLocaleString()+' groups';document.getElementById('resource-tbody').innerHTML=e.map(x=>`<tr><td>${x.name}</td><td>${x.count.toLocaleString()}</td><td class="cost">${fmt(x.cost)}</td><td><div class="cost-bar-cell"><div class="mini-bar" style="width:${Math.max(2,Math.round(x.cost/mx*80))}px"></div><span style="font-size:10px;color:var(--text-muted)">${(x.cost/mx*100).toFixed(1)}%</span></div></td></tr>`).join('')||'<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text-muted)">No results</td></tr>';}
+function sortResourceTable(c){if(resourceSortCol===c)resourceSortDir=resourceSortDir==='asc'?'desc':'asc';else{resourceSortCol=c;resourceSortDir='desc';}renderResourceTable();}
+
+function filterDetailTable(){detailSearch=(document.getElementById('table-search').value||'').toLowerCase();detailPage=1;renderDetailTable();}
+function renderDetailTable(){let rows=filteredRows;if(detailSearch)rows=rows.filter(r=>(r.subscriptionName||'').toLowerCase().includes(detailSearch)||(r.resourceGroupName||'').toLowerCase().includes(detailSearch)||(r.serviceFamily||'').toLowerCase().includes(detailSearch)||(r.meterCategory||'').toLowerCase().includes(detailSearch)||getResourceName(r).toLowerCase().includes(detailSearch));rows=[...rows].sort((a,b)=>{const v=detailSortDir==='asc'?1:-1;const av=a[detailSortCol]||'',bv=b[detailSortCol]||'';if(typeof av==='number')return v*(av-bv);return v*String(av).localeCompare(String(bv));});const total=rows.length,pages=Math.ceil(total/PAGE_SIZE)||1,start=(detailPage-1)*PAGE_SIZE;const paged=rows.slice(start,start+PAGE_SIZE);document.getElementById('detail-row-count').textContent=total.toLocaleString()+' rows';document.getElementById('page-info').textContent=`Page ${detailPage} of ${pages} (${total.toLocaleString()} rows)`;document.getElementById('prev-btn').disabled=detailPage<=1;document.getElementById('next-btn').disabled=detailPage>=pages;window._dpm=pages;document.getElementById('detail-tbody').innerHTML=paged.map(r=>{const tags=parseTagsRobust(r.tags);const env=(getTagVal(r,'environment','Environment','Environtment')||'').toLowerCase();const dept=getTagVal(r,'department','Department');const ec=env.includes('prod')?'env-prod':env.includes('dev')?'env-dev':env.includes('uat')?'env-uat':'env-other';const th=Object.entries(tags).filter(([k])=>!k.startsWith('hidden-')&&!k.startsWith('_')&&!k.startsWith('AzHydration')&&k!=='ms-resource-usage').slice(0,3).map(([k,v])=>`<span class="tag-badge">${k}: ${v}</span>`).join('');return `<tr><td>${r.date||'—'}</td><td>${r.subscriptionName||'—'}</td><td>${r.resourceGroupName||'—'}</td><td>${r.serviceFamily||'—'}</td><td>${r.meterCategory||'—'}</td><td class="resource-id" title="${r.ResourceId||''}">${getResourceName(r)}</td><td>${env?`<span class="env-badge ${ec}">${env}</span>`:''} ${dept?`<span class="tag-badge" style="background:rgba(6,182,212,0.12);color:#67e8f9;border-color:rgba(6,182,212,0.2)">${dept}</span>`:''} ${th}</td><td class="cost">${fmt(r.costInBillingCurrency)}</td></tr>`;}).join('')||'<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--text-muted)">No results</td></tr>';}
+function changePage(d){detailPage=Math.max(1,Math.min(window._dpm||1,detailPage+d));renderDetailTable();}
+function sortDetailTable(c){if(detailSortCol===c)detailSortDir=detailSortDir==='asc'?'desc':'asc';else{detailSortCol=c;detailSortDir='desc';}detailPage=1;renderDetailTable();}
+</script>
+</body>
+</html>
